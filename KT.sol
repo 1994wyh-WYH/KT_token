@@ -1,3 +1,13 @@
+/**
+ * Token name: KT
+ * Interface: ERC721
+ * This token is established by Krypital Group, mainly used as a gift for Krypital supporters.
+ * Total supply of KTs is limited to 2100.
+ * A KT holder can either hold it as a souvenir (leave message on the message board), or play the game by merging/decomposing tokens.
+ * Tokens can used to exchange for future bonus provided by Krypital. For details please check with Krypital's website: https://krypital.com/  
+ * For more news about Krypital on Telegram: https://t.me/KrypitalNews
+ * @author: https://github.com/1994wyh-WYH
+ */
 pragma solidity ^0.4.19;
 
 
@@ -63,7 +73,7 @@ contract ownable {
    * @dev The Ownable constructor sets the original `owner` of the contract to the sender
    * account.
    */
-  function ownable() public {
+  constructor () public {
     owner = msg.sender;
   }
 
@@ -83,7 +93,7 @@ contract ownable {
    */
   function transferOwnership(address newOwner) public onlyOwner {
     require(newOwner != address(0));
-    OwnershipTransferred(owner, newOwner);
+    emit OwnershipTransferred(owner, newOwner);
     owner = newOwner;
   }
 
@@ -102,7 +112,12 @@ contract erc721 {
 }
 
 
-
+/**
+ *  @title KTaccess
+ *  @author https://github.com/1994wyh-WYH
+ *  @dev This contract is for regulating the owners' addr.
+ *  Inherited by KTfactory.
+ */
 contract KTaccess is ownable{
     address public o1Address;
     address public o2Address;
@@ -139,7 +154,20 @@ contract KTaccess is ownable{
 }
 
 
-
+/**
+ * @title KTfactory
+ * @author https://github.com/1994wyh-WYH
+ * @dev This main contract for creating KTs.
+ * 
+ * A KT, which is the token issued by Krypital, has the following properties: 
+ * an officail note that can be created only by the contract owner;
+ * a personal note that can be modified by the current owner of the token;
+ * a bool value indicating if the token is currently frozen by Krypital;
+ * a gene which is a hashed value that changes when mutate (merge or decompose). This is for some future interesting apps :D 
+ * level, namely, the level of the token. Apparently higher is better :D
+ * id, the key used to map to the associated KT.
+ * 
+ */
 
 contract KTfactory is ownable, KTaccess {
 
@@ -154,6 +182,8 @@ contract KTfactory is ownable, KTaccess {
   event NewKT(string note, uint256 gene, uint256 level, uint256 tokenId);
   event UpdateNote(string newNote, uint256 tokenId);
   event PauseToken(uint256 tokenId);
+  event UnpauseToken(uint256 tokenId);
+  event Burn(uint256 tokenId);
 
   struct KT {
     string officialNote;
@@ -179,11 +209,6 @@ contract KTfactory is ownable, KTaccess {
     _;
   }
 
-  modifier decomposeAllowed(uint token_id){
-    require(KTs[token_id].level >= 1);
-    _;
-  }
-
   modifier withinTotal() {
     require(curr_number<= initial_supply);
     _;
@@ -193,18 +218,34 @@ contract KTfactory is ownable, KTaccess {
     require(KTs[token_id].id != 0);
     _;
   }
-
+    
+    /**
+     * @dev The constructor. Sets the initial supply and some other global variables.
+     * That's right, Krypital will only issue 2100 tokens in total. It also means the total number of KTs will not exceed this number!
+     */
   constructor() public {
     initial_supply = 2100;
     maxId=0;
     curr_number=0;
   }
 
+    /**
+     * @dev The creator of KTs. Only done by Krypital.
+     * @param oNote - the official, special note left only by Krypital!
+     */
   function _createKT(string oNote) public onlyOLevel withinTotal {
     uint thisId = maxId + 1;
-    string pNote;
     uint256 thisGene = uint256(keccak256(oNote));
-    KT memory thisKT = KT({officialNote: oNote, personalNote: pNote, paused: false, gene: thisGene, level: 1, id: thisId});
+    
+    KT memory thisKT = KT({
+        officialNote: oNote, 
+        personalNote: "", 
+        paused: false, 
+        gene: thisGene, 
+        level: 1, 
+        id: thisId
+    });
+    
     KTs[thisId] = thisKT;
     maxId = maxId + 1;
     curr_number = curr_number + 1;
@@ -212,45 +253,111 @@ contract KTfactory is ownable, KTaccess {
     ownerKTCount[msg.sender]++;
     emit NewKT(oNote, thisGene, 1, thisId);
   }
-
+    
+    /**
+     * @dev This method is for editing your personal note!
+     * @param note - the note you want the old one to be replaced by
+     * @param token_id - just token id
+     */
   function _editPersonalNote(string note, uint token_id) public onlyOwnerOf(token_id) hasKT(token_id){
     KT storage currKT = KTs[token_id];
     currKT.personalNote = note;
-    UpdateNote(note, token_id);
+    emit UpdateNote(note, token_id);
   }
-
-  function pauseToken(uint token_id) onlyOLevel hasKT(token_id){
+    
+    /**
+     * @dev Pauses a token, done by Krypital
+     * When a token is paused by Krypital, the owner of the token can still update the personal note but the ownership cannot be transferred.
+     * @param token_id - just token id
+     */
+  function pauseToken(uint token_id) public onlyOLevel hasKT(token_id){
     KT storage currKT = KTs[token_id];
     currKT.paused = true;
-    PauseToken(token_id);
+    emit PauseToken(token_id);
   }
+  
+  /**
+   * @dev Unpauses a token, done by Krypital
+   * @param token_id - just token id
+   */
+  function unpauseToken(uint token_id) public onlyOLevel hasKT(token_id){
+    KT storage currKT = KTs[token_id];
+    currKT.paused = false;
+    emit UnpauseToken(token_id);
+  }
+  
+  /**
+   * @dev Burns a token, reduce the current number of KTs by 1.
+   * @param token_id - simply token id.
+   */
+   function burn(uint token_id) public onlyOLevel hasKT(token_id){
+       KT storage currKT = KTs[token_id];
+       currKT.id=0;
+       currKT.level=0;
+       currKT.gene=0;
+       currKT.officialNote="";
+       currKT.personalNote="";
+       currKT.paused=true;
+       curr_number=curr_number.sub(1);
+       emit Burn(token_id);
+   } 
 
 }
 
 
-contract KTownership is KTfactory, erc721 {
+/**
+ * @title KT
+ * @author https://github.com/1994wyh-WYH
+ * @dev This contract is the contract regulating the transfer, decomposition, merging mechanism amaong the tokens.
+ */
+contract KT is KTfactory, erc721 {
 
   using safemath for uint256;
 
-  mapping (uint => address) KTApprovals;
+  mapping (uint => address) public KTApprovals;
+  
+  /**
+   * @dev The modifer to regulate a KT's decomposability.
+   * A level 1 KT is not decomposable.
+   * @param token_id - simply token id.
+   */
+  modifier decomposeAllowed(uint token_id){
+    require(KTs[token_id].level > 1);
+    _;
+  }
 
-  //event Transfer(address from, address to, uint256 tokenId);
-  //event Approval(address from, address to, uint256 tokenId);
   event Decompose(uint256 tokenId);
   event Merge(uint256 tokenId1, uint256 tokenId2);
 
+    /**
+     * @dev This is for getting the ether back to the contract owner's account. Just in case someone generous sends the creator some ethers :P
+     */
   function withdraw() external onlyOwner {
     owner.transfer(this.balance);
   }
 
+    /**
+     * @dev For checking how many tokens you own.
+     * @param _owner - the owner's addr
+     */
   function balanceOf(address _owner) public view returns(uint256) {
     return ownerKTCount[_owner];
   }
-
+    
+    /**
+     * @dev For checking the owner of the given token.
+     * @param _tokenId - just token id
+     */
   function ownerOf(uint256 _tokenId) public view returns(address) {
     return KTToOwner[_tokenId];
   }
 
+    /**
+     * @dev the private helper function for transfering ownership.
+     * @param _from - current KT owner
+     * @param _to - new KT owner
+     * @param _tokenId - just token id
+     */
   function _transfer(address _from, address _to, uint256 _tokenId) private hasKT(_tokenId) {
     ownerKTCount[_to] = ownerKTCount[_to].add(1);
     ownerKTCount[msg.sender] = ownerKTCount[msg.sender].sub(1);
@@ -258,26 +365,43 @@ contract KTownership is KTfactory, erc721 {
     emit Transfer(_from, _to, _tokenId);
   }
 
+    /**
+     * @dev This method can be called if you are the token owner and you want to transfer the token to someone else.
+     * @param _to - new KT owner
+     * @param _tokenId - just token id
+     */
   function transfer(address _to, uint256 _tokenId) public whenNotFrozen(_tokenId) onlyOwnerOf(_tokenId) hasKT(_tokenId){
     require(_to != address(0));
     _transfer(msg.sender, _to, _tokenId);
   }
-
+    
+    /**
+     * @dev An approved user can 'claim' a token of another user.
+     * @param _to - new KT owner
+     * @param _tokenId - just token id
+     */
   function approve(address _to, uint256 _tokenId) public onlyOwnerOf(_tokenId) hasKT(_tokenId) {
-    require(_to != address(0));
     KTApprovals[_tokenId] = _to;
     emit Approval(msg.sender, _to, _tokenId);
   }
-
+    
+    /**
+     * @dev The user to be approved must be approved by the current token holder.
+     * @param _tokenId - just token id
+     */
   function takeOwnership(uint256 _tokenId) public whenNotFrozen(_tokenId) hasKT(_tokenId){
     require(KTApprovals[_tokenId] == msg.sender);
     address owner = ownerOf(_tokenId);
     _transfer(owner, msg.sender, _tokenId);
   }
 
-  // level down!!!
-  // gene remains identical!!!
-  // notes identical!!!
+  /**
+   * @dev This method is for decomposing (or split) a token. Only can be done by token holder when token is not frozen.
+   * Note: one of the tokens will take the original token's place, that is, the old ID will actually map to a new token!
+   * Level down by 1!!! A level 1 token cannot be decomposed.
+   * The genes of the two new born tokens will be both identical to the old token.
+   * Notes of the two new tokens are identical to the original token.
+   */
   function decompose(uint256 token_id) public whenNotFrozen(token_id) onlyOwnerOf(token_id) decomposeAllowed(token_id) hasKT(token_id) withinTotal{
     KT storage decomposed = KTs[token_id];
     decomposed.level = decomposed.level-1;
@@ -301,9 +425,15 @@ contract KTownership is KTfactory, erc721 {
     emit Decompose(token_id);
   }
 
-  // id and officialNote merged to the previous one
-  // level up!!!
-  // gene = (gene1 + gene2) /2
+    /**
+     * @dev This function is for merging 2 tokens. Only tokens with the same levels can be merge. A user can only choose to merge from his own tokens.
+     * After merging, id and official note are merged to the previous token passed in the args.
+     * NOTE that the notes associated with the second token will be wiped out! Use with your caution.
+     * Level up by 1!!!
+     * New gene = (gene1 + gene2) / 2
+     * @param id1 - the ID to the 1st token, this ID will remain after merging.
+     * @param id2 - the ID of the 2nd token, this ID will map to nothing after merging!!
+     */
   function merge(uint256 id1, uint256 id2) public hasKT(id1) hasKT(id2) whenNotFrozen(id1) whenNotFrozen(id2) onlyOwnerOf(id1) onlyOwnerOf(id2){
     require(KTs[id1].level == KTs[id2].level);
     KT storage token1 = KTs[id1];
@@ -320,9 +450,11 @@ contract KTownership is KTfactory, erc721 {
     });
 
     KTs[id2] = toDelete;
-    curr_number=curr_number.sub(1);
-    ownerKTCount[msg.sender]=ownerKTCount[msg.sender].sub(1);
+    curr_number = curr_number.sub(1);
+    KTToOwner[id2] = address(0);
+    ownerKTCount[msg.sender] = ownerKTCount[msg.sender].sub(1);
 
     emit Merge(id1, id2);
   }
+  
 }
