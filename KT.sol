@@ -1,5 +1,6 @@
 /**
- * Token name: KT
+ * Token name: KT 
+ * @version: v1.0.0
  * Interface: ERC721
  * This token is established by Krypital Group, mainly used as a gift for Krypital supporters.
  * Total supply of KTs is limited to 2100.
@@ -119,6 +120,7 @@ contract erc721 {
  *  Inherited by KTfactory.
  */
 contract KTaccess is ownable{
+    //following are three extra addresses with the contract owner privileges
     address public o1Address;
     address public o2Address;
     address public o3Address;
@@ -135,19 +137,16 @@ contract KTaccess is ownable{
 
     function setO1(address _newAddr) external onlyOLevel {
         require(_newAddr != address(0));
-
         o1Address = _newAddr;
     }
 
     function setO2(address _newAddr) external onlyOLevel {
         require(_newAddr != address(0));
-
         o2Address = _newAddr;
     }
     
     function setO3(address _newAddr) external onlyOLevel {
         require(_newAddr != address(0));
-
         o3Address = _newAddr;
     }
 
@@ -233,8 +232,8 @@ contract KTfactory is ownable, KTaccess {
      * @dev The creator of KTs. Only done by Krypital.
      * @param oNote - the official, special note left only by Krypital!
      */
-  function _createKT(string oNote) public onlyOLevel withinTotal {
-    uint thisId = maxId + 1;
+  function createKT(string oNote) public onlyOLevel withinTotal {
+    uint thisId = maxId.add(1);
     uint256 thisGene = uint256(keccak256(oNote));
     
     KT memory thisKT = KT({
@@ -247,10 +246,10 @@ contract KTfactory is ownable, KTaccess {
     });
     
     KTs[thisId] = thisKT;
-    maxId = maxId + 1;
-    curr_number = curr_number + 1;
+    maxId = thisId;
+    curr_number = curr_number.add(1);
     KTToOwner[thisId] = msg.sender;
-    ownerKTCount[msg.sender]++;
+    ownerKTCount[msg.sender]=ownerKTCount[msg.sender].add(1);
     emit NewKT(oNote, thisGene, 1, thisId);
   }
     
@@ -259,7 +258,7 @@ contract KTfactory is ownable, KTaccess {
      * @param note - the note you want the old one to be replaced by
      * @param token_id - just token id
      */
-  function _editPersonalNote(string note, uint token_id) public onlyOwnerOf(token_id) hasKT(token_id){
+  function editPersonalNote(string note, uint token_id) public onlyOwnerOf(token_id) hasKT(token_id){
     KT storage currKT = KTs[token_id];
     currKT.personalNote = note;
     emit UpdateNote(note, token_id);
@@ -292,12 +291,17 @@ contract KTfactory is ownable, KTaccess {
    */
    function burn(uint token_id) public onlyOLevel hasKT(token_id){
        KT storage currKT = KTs[token_id];
+       address curr_owner = KTToOwner[token_id];
+       ownerKTCount[curr_owner] = ownerKTCount[curr_owner].sub(1);
+       KTToOwner[token_id] = address(0);
+       
        currKT.id=0;
        currKT.level=0;
        currKT.gene=0;
        currKT.officialNote="";
        currKT.personalNote="";
        currKT.paused=true;
+       
        curr_number=curr_number.sub(1);
        emit Burn(token_id);
    } 
@@ -333,7 +337,7 @@ contract KT is KTfactory, erc721 {
      * @dev This is for getting the ether back to the contract owner's account. Just in case someone generous sends the creator some ethers :P
      */
   function withdraw() external onlyOwner {
-    owner.transfer(this.balance);
+    owner.transfer((address(this)).balance);
   }
 
     /**
@@ -360,7 +364,7 @@ contract KT is KTfactory, erc721 {
      */
   function _transfer(address _from, address _to, uint256 _tokenId) private hasKT(_tokenId) {
     ownerKTCount[_to] = ownerKTCount[_to].add(1);
-    ownerKTCount[msg.sender] = ownerKTCount[msg.sender].sub(1);
+    ownerKTCount[_from] = ownerKTCount[_from].sub(1);
     KTToOwner[_tokenId] = _to;
     emit Transfer(_from, _to, _tokenId);
   }
@@ -404,8 +408,9 @@ contract KT is KTfactory, erc721 {
    */
   function decompose(uint256 token_id) public whenNotFrozen(token_id) onlyOwnerOf(token_id) decomposeAllowed(token_id) hasKT(token_id) withinTotal{
     KT storage decomposed = KTs[token_id];
-    decomposed.level = decomposed.level-1;
+    decomposed.level = decomposed.level-1; //will not be lower than 1.
     decomposed.gene = decomposed.gene/2;
+    maxId=maxId.add(1);
 
     KT memory newKT = KT({
       officialNote: decomposed.officialNote,
@@ -413,10 +418,9 @@ contract KT is KTfactory, erc721 {
       paused: false,
       gene: decomposed.gene,
       level: decomposed.level,
-      id: maxId.add(1)
+      id: maxId
     });
     
-    maxId=maxId.add(1);
     curr_number=curr_number.add(1);
     KTs[maxId]=newKT;
     KTToOwner[maxId]=KTToOwner[token_id];
@@ -437,7 +441,7 @@ contract KT is KTfactory, erc721 {
   function merge(uint256 id1, uint256 id2) public hasKT(id1) hasKT(id2) whenNotFrozen(id1) whenNotFrozen(id2) onlyOwnerOf(id1) onlyOwnerOf(id2){
     require(KTs[id1].level == KTs[id2].level);
     KT storage token1 = KTs[id1];
-    token1.gene = (token1.gene + KTs[id2].gene) / 2;
+    token1.gene = (token1.gene + KTs[id2].gene) / 2; //don't care about overflow. SafeMath not needed.
     token1.level = (token1.level).add(1);
 
     KT memory toDelete = KT ({
