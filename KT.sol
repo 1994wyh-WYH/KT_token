@@ -232,8 +232,12 @@ contract KTfactory is ownable, KTaccess {
      * @dev The creator of KTs. Only done by Krypital.
      * @param oNote - the official, special note left only by Krypital!
      */
-  function createKT(string oNote) public onlyOLevel withinTotal {
-    uint thisId = maxId.add(1);
+  function createKT(string oNote, uint256 id) public onlyOLevel withinTotal {
+    require(KTs[token_id].ido == 0);
+    uint thisId = id;
+    if(id>maxId){
+        maxId.add(1);
+    }
     uint256 thisGene = uint256(keccak256(oNote));
     
     KT memory thisKT = KT({
@@ -246,7 +250,6 @@ contract KTfactory is ownable, KTaccess {
     });
     
     KTs[thisId] = thisKT;
-    maxId = thisId;
     curr_number = curr_number.add(1);
     KTToOwner[thisId] = msg.sender;
     ownerKTCount[msg.sender]=ownerKTCount[msg.sender].add(1);
