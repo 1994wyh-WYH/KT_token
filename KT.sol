@@ -335,6 +335,9 @@ contract KT is KTfactory, erc721 {
 
   event Decompose(uint256 tokenId);
   event Merge(uint256 tokenId1, uint256 tokenId2);
+  
+  // fallback function.
+  function() payable { }
 
     /**
      * @dev This is for getting the ether back to the contract owner's account. Just in case someone generous sends the creator some ethers :P
