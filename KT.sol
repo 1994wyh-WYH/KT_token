@@ -233,7 +233,7 @@ contract KTfactory is ownable, KTaccess {
      * @param oNote - the official, special note left only by Krypital!
      */
   function createKT(string oNote, uint256 id) public onlyOLevel withinTotal {
-    require(KTs[token_id].ido == 0);
+    require(KTs[id].id == 0);
     uint thisId = id;
     if(id>maxId){
         maxId.add(1);
@@ -293,11 +293,11 @@ contract KTfactory is ownable, KTaccess {
    * @param token_id - simply token id.
    */
    function burn(uint token_id) public onlyOLevel hasKT(token_id){
-       KT storage currKT = KTs[token_id];
        address curr_owner = KTToOwner[token_id];
-       ownerKTCount[curr_owner] = ownerKTCount[curr_owner].sub(1);
        KTToOwner[token_id] = address(0);
+       ownerKTCount[curr_owner] = ownerKTCount[curr_owner].sub(1);
        
+       KT storage currKT = KTs[token_id];
        currKT.id=0;
        currKT.level=0;
        currKT.gene=0;
@@ -446,10 +446,9 @@ contract KT is KTfactory, erc721 {
      */
   function merge(uint256 id1, uint256 id2) public hasKT(id1) hasKT(id2) whenNotFrozen(id1) whenNotFrozen(id2) onlyOwnerOf(id1) onlyOwnerOf(id2){
     require(KTs[id1].level == KTs[id2].level);
-    KT storage token1 = KTs[id1];
-    token1.gene = (token1.gene + KTs[id2].gene) / 2; //don't care about overflow. SafeMath not needed.
-    token1.level = (token1.level).add(1);
-
+    KTToOwner[id2] = address(0);
+    ownerKTCount[msg.sender] = ownerKTCount[msg.sender].sub(1);
+    //delete first in case of race condition
     KT memory toDelete = KT ({
       officialNote: "",
       personalNote: "",
@@ -458,12 +457,13 @@ contract KT is KTfactory, erc721 {
       level: 0,
       id: 0
     });
-
     KTs[id2] = toDelete;
+    
+    KT storage token1 = KTs[id1];
+    token1.gene = (token1.gene + KTs[id2].gene) / 2; //don't care about overflow. SafeMath not needed.
+    token1.level = (token1.level).add(1);
+    
     curr_number = curr_number.sub(1);
-    KTToOwner[id2] = address(0);
-    ownerKTCount[msg.sender] = ownerKTCount[msg.sender].sub(1);
-
     emit Merge(id1, id2);
   }
   
