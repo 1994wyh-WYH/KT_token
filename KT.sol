@@ -217,6 +217,11 @@ contract KTfactory is ownable, KTaccess {
     require(KTs[token_id].id != 0);
     _;
   }
+  
+  modifier idValid(uint token_id) {
+    require(KTs[token_id].id == 0);
+    _;
+  }
     
     /**
      * @dev The constructor. Sets the initial supply and some other global variables.
@@ -231,12 +236,45 @@ contract KTfactory is ownable, KTaccess {
     /**
      * @dev The creator of KTs. Only done by Krypital.
      * @param oNote - the official, special note left only by Krypital!
+     * @param id - the ID that the newly created token assigned to
      */
-  function createKT(string oNote, uint256 id) public onlyOLevel withinTotal {
-    require(KTs[id].id == 0);
+  function createKT(string oNote, uint256 id) 
+    public 
+    onlyOLevel 
+    withinTotal 
+    idValid(id)
+    {
     uint thisId = id;
-    if(id>maxId){
-        maxId.add(1);
+    uint256 thisGene = uint256(keccak256(oNote));
+    
+    KT memory thisKT = KT({
+        officialNote: oNote, 
+        personalNote: "", 
+        paused: false, 
+        gene: thisGene, 
+        level: 1, 
+        id: thisId
+    });
+    
+    KTs[thisId] = thisKT;
+    curr_number = curr_number.add(1);
+    KTToOwner[thisId] = msg.sender;
+    ownerKTCount[msg.sender]=ownerKTCount[msg.sender].add(1);
+    emit NewKT(oNote, thisGene, 1, thisId);
+  }
+  
+    /**
+     * @dev The creator of KTs. Only done by Krypital.
+     * @param oNote - the official, special note left only by Krypital!
+     * No token ID. Use with caution.
+     */
+  function createKT(string oNote) public onlyOLevel withinTotal {
+    maxId++;
+    uint thisId = maxId;
+    
+    while(KTs[thisId].id != 0){
+        maxId++;
+        thisId = maxId;
     }
     uint256 thisGene = uint256(keccak256(oNote));
     
